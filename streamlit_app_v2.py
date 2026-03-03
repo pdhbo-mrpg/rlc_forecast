@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 from prophet import Prophet
 from snowflake.snowpark.context import get_active_session
+from snowflake.snowpark.exceptions import SnowparkSQLException
 
 try:
     from hierarchicalforecast.core import HierarchicalReconciliation
@@ -119,13 +120,23 @@ def table_exists(session, fully_qualified_name: str) -> bool:
 
 def ensure_archive_and_run(session) -> None:
     """Create archive table if needed and run archive logic."""
-    if not table_exists(session, ARCHIVE_TABLE):
-        st.warning(f"Archive table not found. Creating `{ARCHIVE_TABLE}` from current monthly forecast structure.")
-        session.sql(f"CREATE TABLE {ARCHIVE_TABLE} LIKE {LIVE_MONTHLY_TABLE}").collect()
+    try:
+        if not table_exists(session, ARCHIVE_TABLE):
+            st.warning(f"Archive table not found. Creating `{ARCHIVE_TABLE}` from current monthly forecast structure.")
+            session.sql(f"CREATE TABLE {ARCHIVE_TABLE} LIKE {LIVE_MONTHLY_TABLE}").collect()
 
-    archive_outputs = run_sql_file(session, ARCHIVE_SQL)
-    if archive_outputs:
-        st.json(archive_outputs)
+        archive_outputs = run_sql_file(session, ARCHIVE_SQL)
+        if archive_outputs:
+            st.json(archive_outputs)
+    except SnowparkSQLException as exc:
+        err = str(exc)
+        if "42501" in err or "Insufficient privileges" in err:
+            st.warning(
+                "Skipping archive step due to insufficient privileges on "
+                f"`{ARCHIVE_TABLE}`. Grant SELECT/INSERT on the archive table to enable this step."
+            )
+            return
+        raise
 
 
 def build_hierarchy(df: pd.DataFrame):
