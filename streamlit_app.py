@@ -119,7 +119,17 @@ def run_prophet_forecast(session, horizon: int) -> int:
     history_pdf = session.table(HISTORY_TABLE).to_pandas()
     history_pdf.columns = [c.lower() for c in history_pdf.columns]
 
-    forecast_pdf = forecast(history_pdf, horizon=horizon)
+    progress_bar = st.progress(0, text="Step 3/4: Preparing Prophet models...")
+
+    def on_progress(done: int, total: int) -> None:
+        if total <= 0:
+            progress_bar.progress(0, text="Step 3/4: Preparing Prophet models...")
+            return
+        pct = min(max(done / total, 0.0), 1.0)
+        progress_bar.progress(int(pct * 100), text=f"Step 3/4: Prophet series progress {done:,}/{total:,}")
+
+    forecast_pdf = forecast(history_pdf, horizon=horizon, progress_callback=on_progress)
+    progress_bar.progress(100, text="Step 3/4: Prophet + hierarchical reconciliation completed")
     out_pdf = forecast_pdf[["entity_l1", "prod_l1", "region_l1", "retail_week", "yhat"]].copy()
     out_pdf = out_pdf.rename(columns={"yhat": "FCST"})
     out_pdf.columns = [c.upper() for c in out_pdf.columns]
