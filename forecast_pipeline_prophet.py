@@ -38,7 +38,7 @@ import config
 # HierarchicalForecast imports
 try:
     from hierarchicalforecast.core import HierarchicalReconciliation
-    from hierarchicalforecast.methods import MinTrace
+    from hierarchicalforecast.methods import BottomUp, MinTrace, ERM
     from hierarchicalforecast.utils import aggregate
 except ImportError as exc:
     raise SystemExit(
@@ -447,8 +447,8 @@ def forecast(
     LOGGER.info("Reconciling with MinTrace (mint_shrink)...")
     
     # nonnegative=False to avoid LinAlgError (we clip manually)
-    reconcilers = [
-        MinTrace(method="mint_shrink", nonnegative=False)
+    reconcilers = [BottomUp(),
+        MinTrace(method="mint_shrink", nonnegative=False),
     ]
     
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
@@ -576,3 +576,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
