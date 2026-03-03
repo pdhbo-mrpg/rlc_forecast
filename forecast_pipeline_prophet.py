@@ -214,44 +214,6 @@ def load_history(engine: Engine, source_table: str) -> pd.DataFrame:
     return df
 
 
-# def clean_history(df: pd.DataFrame) -> pd.DataFrame:
-#     """Clean history: parse dates, impute missing, clip outliers, sanitize columns."""
-#     df = df.copy()
-#     LOGGER.info("Parsing retail weeks and cleaning missing/outliers")
-    
-#     # 1. Parse Calendar Date
-#     df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
-    
-#     # 2. Sanitize IDs
-#     # Add new integer-based levels to the cleaning list
-#     int_cols = ['prod_l1', 'prod_l4', 'region_l1', 'region_l3']
-#     for col in int_cols:
-#         if col in df.columns:
-#             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
-
-#     # 3. Replace '/' with '|' in data values
-#     for col in LEVEL_COLS:
-#         if df[col].dtype == object or df[col].dtype.name == 'category':
-#             df[col] = df[col].astype(str).str.replace("/", "|")
-
-#     df = df.sort_values(LEVEL_COLS + [DATE_COL])
-
-#     # 4. Outlier Handling
-#     # def _impute_and_clip(series: pd.Series) -> pd.Series:
-#     #     filled = series.ffill().bfill()
-#     #     if filled.isna().all():
-#     #         filled = filled.fillna(0)
-#     #     mean_val = filled.mean()
-#     #     filled = filled.fillna(mean_val)
-#     #     q1, q3 = filled.quantile([0.05, 0.95]) 
-#     #     iqr = q3 - q1
-#     #     lower = max(0.0, q1 - 1.5 * iqr)
-#     #     upper = q3 + 2.0 * iqr 
-#     #     return filled.clip(lower=lower, upper=upper)
-
-#     # df[VALUE_COL] = df.groupby(LEVEL_COLS, observed=True)[VALUE_COL].transform(_impute_and_clip)
-#     LOGGER.info("Finished cleaning history")
-#     return df[LEVEL_COLS + [DATE_COL, VALUE_COL]]
 
 
 def build_hierarchy(df: pd.DataFrame):
@@ -454,11 +416,11 @@ def forecast(
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     
     reconciled = hrec.reconcile(
-        Y_hat_df=Y_hat_df,
-        S=S_df,
+        Y_hat_df=Y_hat_df, 
+        S=S, 
         tags=tags,
-        Y_df=Y_df,
-        )
+        Y_df=Y_fitted_df
+    )
 
     # 4. Extract Bottom Level
     reconciled = reconciled.reset_index()
@@ -576,5 +538,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
