@@ -454,11 +454,11 @@ def forecast(
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     
     reconciled = hrec.reconcile(
-        Y_hat_df=Y_hat_df, 
-        Y_df=Y_fitted_df, 
-        S_df=S, 
-        tags=tags
-    )
+        Y_hat_df=Y_hat_df,
+        S=S_df,
+        tags=tags,
+        Y_df=Y_df,
+        )
 
     # 4. Extract Bottom Level
     reconciled = reconciled.reset_index()
@@ -576,4 +576,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
