@@ -16,7 +16,7 @@ import logging
 import time
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 import certifi
 
 import numpy as np
@@ -310,7 +310,11 @@ def get_retail_holidays() -> pd.DataFrame:
     return holidays
 
 
-def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def run_prophet_on_hierarchy(
+    Y_df: pd.DataFrame,
+    horizon: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Fits Prophet models optimized for Retail Weekly Data with Custom Holidays."""
     future_forecasts_list = []
     insample_fitted_list = []
@@ -328,6 +332,8 @@ def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataF
     skipped = 0
 
     for i, uid in enumerate(unique_ids):
+        if progress_callback:
+            progress_callback(i, total_series)
         if i % 100 == 0:
             LOGGER.info(f"Processing series [{i+1}/{total_series}]")
 
@@ -398,11 +404,17 @@ def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataF
     Y_fitted_df = pd.concat(insample_fitted_list).reset_index(drop=True)
     
     LOGGER.info(f"Successfully processed {total_series - skipped} series (Skipped {skipped})")
+    if progress_callback:
+        progress_callback(total_series, total_series)
         
     return Y_hat_df, Y_fitted_df
 
 
-def forecast(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
+def forecast(
+    df: pd.DataFrame,
+    horizon: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> pd.DataFrame:
     """
     Fit Prophet models and reconcile using MinTrace (mint_shrink).
     """
@@ -420,7 +432,11 @@ def forecast(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
 
     # 2. Run Prophet Base Models
     LOGGER.info("Fitting base Prophet models and generating in-sample residuals...")
-    Y_hat_df, Y_fitted_df = run_prophet_on_hierarchy(Y_df, horizon)
+    Y_hat_df, Y_fitted_df = run_prophet_on_hierarchy(
+        Y_df,
+        horizon,
+        progress_callback=progress_callback,
+    )
 
     # Intersection Check
     common_ids = set(Y_hat_df['unique_id']) & set(Y_fitted_df['unique_id'])

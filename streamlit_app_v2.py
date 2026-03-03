@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -183,7 +183,11 @@ def get_retail_holidays() -> pd.DataFrame:
     return pd.DataFrame({"holiday": "BlackFriday", "ds": bf_dates_sunday, "lower_window": 0, "upper_window": 1})
 
 
-def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def run_prophet_on_hierarchy(
+    Y_df: pd.DataFrame,
+    horizon: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Fit Prophet to each hierarchy node and produce future + in-sample forecasts."""
     future_forecasts_list = []
     insample_fitted_list = []
@@ -193,7 +197,12 @@ def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataF
 
     retail_holidays = get_retail_holidays()
 
-    for uid in Y_df.index.unique():
+    unique_ids = Y_df.index.unique()
+    total_series = len(unique_ids)
+
+    for i, uid in enumerate(unique_ids):
+        if progress_callback:
+            progress_callback(i, total_series)
         series_data = Y_df.loc[[uid]].reset_index().sort_values("ds").dropna(subset=["y"])
         if len(series_data) < 5:
             continue
@@ -228,16 +237,27 @@ def run_prophet_on_hierarchy(Y_df: pd.DataFrame, horizon: int) -> Tuple[pd.DataF
     if not future_forecasts_list or not insample_fitted_list:
         raise ValueError("No series had sufficient data for Prophet.")
 
+    if progress_callback:
+        progress_callback(total_series, total_series)
+
     return pd.concat(future_forecasts_list).reset_index(drop=True), pd.concat(insample_fitted_list).reset_index(drop=True)
 
 
-def forecast(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
+def forecast(
+    df: pd.DataFrame,
+    horizon: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> pd.DataFrame:
     """Run hierarchical Prophet and MinTrace reconciliation."""
     df = df.copy().rename(columns={DATE_COL: "ds", VALUE_COL: "y"})
     df = df[LEVEL_COLS + ["ds", "y"]]
 
     Y_df, S, tags = build_hierarchy(df)
-    Y_hat_df, Y_fitted_df = run_prophet_on_hierarchy(Y_df, horizon)
+    Y_hat_df, Y_fitted_df = run_prophet_on_hierarchy(
+        Y_df,
+        horizon,
+        progress_callback=progress_callback,
+    )
 
     common_ids = set(Y_hat_df["unique_id"]) & set(Y_fitted_df["unique_id"])
     Y_hat_df = Y_hat_df[Y_hat_df["unique_id"].isin(common_ids)]
@@ -269,7 +289,17 @@ def run_prophet_forecast(session, horizon: int) -> int:
     history_pdf = session.table(HISTORY_TABLE).to_pandas()
     history_pdf.columns = [c.lower() for c in history_pdf.columns]
 
-    forecast_pdf = forecast(history_pdf, horizon=horizon)
+    progress_bar = st.progress(0, text="Step 3/4: Preparing Prophet models...")
+
+    def on_progress(done: int, total: int) -> None:
+        if total <= 0:
+            progress_bar.progress(0, text="Step 3/4: Preparing Prophet models...")
+            return
+        pct = min(max(done / total, 0.0), 1.0)
+        progress_bar.progress(int(pct * 100), text=f"Step 3/4: Prophet series progress {done:,}/{total:,}")
+
+    forecast_pdf = forecast(history_pdf, horizon=horizon, progress_callback=on_progress)
+    progress_bar.progress(100, text="Step 3/4: Prophet + hierarchical reconciliation completed")
     out_pdf = forecast_pdf[["entity_l1", "prod_l1", "region_l1", "retail_week", "yhat"]].copy()
     out_pdf = out_pdf.rename(columns={"yhat": "FCST"})
     out_pdf.columns = [c.upper() for c in out_pdf.columns]
